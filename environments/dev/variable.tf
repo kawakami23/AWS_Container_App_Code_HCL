@@ -20,3 +20,9 @@ variable "github_actions" {
     repository   = string
   }) 
 }
+
+variable "code_connection" {
+  type = object({
+    arn = string
+  })
+}
