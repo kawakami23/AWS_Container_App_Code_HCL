@@ -1,0 +1,18 @@
+# 使用されているビルド使用スタンダートのバージョン0.2が最新
+version: 0.2
+
+# phasesにはあとinstallがある
+phases:
+  pre_build:
+    commands:
+      - echo "ECRへログイン"
+      - aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URI}
+  build:
+    commands:
+      - echo "ビルド開始"
+      - docker build -f ./backend_app/Dockerfile -t "${REPOSITORY_URI}:test" .
+  post_build:
+    commands:
+      - echo "ECRへpush"
+      - docker push "${REPOSITORY_URI}:test"
+      - printf '{"Version":"1.0","ImageURI":"%s"}' ${REPOSITORY_URI}:test > imageDetail.json
