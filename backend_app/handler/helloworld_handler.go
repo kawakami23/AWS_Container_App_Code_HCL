@@ -19,7 +19,7 @@ func NewHelloWorldHandler() *HelloWorldHandler {
 // SayHelloWorld ...
 func (handler *HelloWorldHandler) SayHelloWorld() echo.HandlerFunc {
 	body := &model.Hello{
-		Data: "Hello world! CI/CD succeeded!",
+		Data: "Hello world",
 	}
 	return func(c echo.Context) error {
 		return c.JSON(http.StatusOK, body)
