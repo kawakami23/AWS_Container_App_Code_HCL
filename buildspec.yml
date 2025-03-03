@@ -20,10 +20,10 @@ phases:
       - printf '{"Version":"1.0","ImageURI":"%s"}' ${REPOSITORY_URI}:test > imageDetail.json
       - echo "タスク定義を書き換える"
       - pwd
-      - sed -ie "s/<TASK_FAMILY>/${TASK_FAMILY}/" taskdef.json
-      - sed -ie "s/<TASK_EXECUTION_ROLE_ARN>/${TASK_EXECUTION_ROLE_ARN}/" taskdef.json
-      - sed -ie "s/<SECRETS_FOR_DB_ARN>/${SECRETS_FOR_DB_ARN}/" taskdef.json
-      - sed -ie "s/<LOG_GROUP_NAME>/${LOG_GROUP_NAME}/" taskdef.json
+      - sed -ie "s#<TASK_FAMILY>#${TASK_FAMILY}#" taskdef.json
+      - sed -ie "s#<TASK_EXECUTION_ROLE_ARN>#${TASK_EXECUTION_ROLE_ARN}#" taskdef.json
+      - sed -ie "s#<SECRETS_FOR_DB_ARN>#${SECRETS_FOR_DB_ARN}#" taskdef.json
+      - sed -ie "s#<LOG_GROUP_NAME>#${LOG_GROUP_NAME}#" taskdef.json
       - echo "$(cat taskdef.json)"
 artifacts:
   files:
