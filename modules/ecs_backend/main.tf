@@ -93,6 +93,282 @@ resource "aws_ecs_service" "backend" {
   }
 }
 
+# Define ECS task execution role
+resource "aws_iam_role" "task_execution_role" {
+  name               = "${var.common.env}-task-execution-role"
+  assume_role_policy = data.aws_iam_policy_document.trust_policy_for_task_execution_role.json
+}
+
+data "aws_iam_policy_document" "trust_policy_for_task_execution_role" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_policy" "policy_for_access_to_secrets_manager" {
+  name   = "${var.common.env}-GettingSecretsPolicy-backend"
+  policy = data.aws_iam_policy_document.policy_for_access_to_secrets_manager.json
+}
+
+data "aws_iam_policy_document" "policy_for_access_to_secrets_manager" {
+  statement {
+    effect    = "Allow"
+    resources = ["*"]
+    actions = [
+      "secretsmanager:GetSecretValue",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy_attachments_exclusive" "task_execution_role" {
+  role_name = aws_iam_role.task_execution_role.name
+  policy_arns = [
+    "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
+    aws_iam_policy.policy_for_access_to_secrets_manager.arn
+  ]
+}
+
+########################
+# CodeConnection
+########################
+
+# Define CodeConnection for GitHub Repository
+data "aws_codestarconnections_connection" "github" {
+  arn = var.code_pipeline.code_connection_arn
+}
+
+########################
+# CodePipeline
+########################
+
+# Define CodePipeline
+resource "aws_codepipeline" "backend" {
+  name     = "${var.common.env}-backend-codepipeline"
+  role_arn = aws_iam_role.codepipeline.arn
+  pipeline_type = "V2"
+  execution_mode = "QUEUED"
+
+  artifact_store {
+    location = aws_s3_bucket.codepipeline.bucket
+    type     = "S3"
+  }
+
+  stage {
+    name = "Source"
+    action {
+      name             = "${var.common.env}-backend-source"
+      category         = "Source"
+      owner            = "AWS"
+      provider         = "CodeStarSourceConnection"
+      version          = "1"
+      output_artifacts = ["SourceArtifact"]
+
+      configuration = {
+        ConnectionArn = data.aws_codestarconnections_connection.github.arn
+        FullRepositoryId = "${var.code_pipeline.github_repository_owner}/${var.code_pipeline.github_repository_name}"
+        BranchName = var.code_pipeline.github_repository_branch_name
+      }
+    }
+  }
+
+  stage {
+    name = "Build"
+
+    action {
+      name            = "${var.common.env}-backend-build"
+      category        = "Build"
+      owner           = "AWS"
+      provider        = "CodeBuild"
+      version         = "1"
+      input_artifacts = ["SourceArtifact"]
+      output_artifacts = ["BuildArtifact"]
+
+      configuration = {
+        ProjectName = aws_codebuild_project.backend.name
+      }
+    }
+  }
+
+  stage {
+    name = "Deploy"
+
+    action {
+      name            = "${var.common.env}-backend-deploy"
+      category        = "Deploy"
+      owner           = "AWS"
+      provider        = "CodeDeployToECS"
+      version         = "1"
+      input_artifacts = ["SourceArtifact", "BuildArtifact"]
+
+      configuration = {
+        ApplicationName         = aws_codedeploy_app.backend.name
+        DeploymentGroupName     = aws_codedeploy_deployment_group.backend.deployment_group_name
+        TaskDefinitionTemplateArtifact = "SourceArtifact"
+        AppSpecTemplateArtifact = "SourceArtifact"
+      }
+    }
+  }
+}
+
+# Define IAM Service role for CodePipeline
+resource "aws_iam_role" "codepipeline" {
+  name               = "${var.common.env}-role-for-codepipeline"
+  assume_role_policy = data.aws_iam_policy_document.trust_policy_for_codepipeline.json
+}
+
+data "aws_iam_policy_document" "trust_policy_for_codepipeline" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["codepipeline.amazonaws.com"]
+    }
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_policy" "policy_for_codepipeline" {
+  name   = "${var.common.env}-policy-for-codepipeline"
+  policy = templatefile("../../iam_policy_json_files/policy_for_codepipeline.json", {
+    pipeline_arn = aws_codepipeline.backend.arn
+  })
+}
+
+resource "aws_iam_role_policy_attachments_exclusive" "codepipeline" {
+  role_name = aws_iam_role.codepipeline.name
+  policy_arns = [
+    aws_iam_policy.policy_for_codepipeline.arn
+  ]
+}
+
+# Define S3 Bucket for Artifacts
+resource "aws_s3_bucket" "codepipeline" {
+  bucket = var.code_pipeline.artifacts_bucket_name
+}
+
+resource "aws_s3_bucket_versioning" "codepipeline" {
+  bucket = aws_s3_bucket.codepipeline.bucket
+  versioning_configuration {
+    status = "Disabled"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "codepipeline" {
+  bucket = aws_s3_bucket.codepipeline.bucket
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "codepipeline" {
+  bucket = aws_s3_bucket.codepipeline.bucket
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+########################
+# CodeBuild
+########################
+
+# Define CodeBuild project
+resource "aws_codebuild_project" "backend" {
+  name         = "${var.common.env}-backend-codebuild"
+  service_role = aws_iam_role.codebuild.arn
+  artifacts {
+    type = "NO_ARTIFACTS"
+  }
+  environment {
+    compute_type = "BUILD_GENERAL1_SMALL"
+    image        = "aws/codebuild/amazonlinux-x86_64-standard:5.0"
+    type         = "LINUX_CONTAINER"
+    environment_variable {
+      name  = "REGION"
+      value = var.common.region
+    }
+    environment_variable {
+      name  = "AWS_ACCOUNT_ID"
+      value = var.common.account_id
+    }
+    environment_variable {
+      name  = "DOCKER_USERNAME"
+      value = var.code_pipeline.docker_username
+    }
+    environment_variable {
+      name  = "DOCKER_PASSWORD"
+      value = var.code_pipeline.docker_password
+    }
+    environment_variable {
+      name  = "REPOSITORY_URI"
+      value = var.ecr_repository.backend_repository_uri ##### ここら辺はSecretsにすべきか？
+    }
+    environment_variable {
+      name  = "TASK_FAMILY"
+      value = "${var.common.env}-backend-def"
+    }
+    environment_variable {
+      name  = "TASK_EXECUTION_ROLE_ARN"
+      value = aws_iam_role.task_execution_role.arn
+    }
+    environment_variable {
+      name  = "SECRETS_FOR_DB_ARN"
+      value = var.secrets_manager.secret_for_db_arn
+    }
+    environment_variable {
+      name  = "LOG_GROUP_NAME"
+      value = aws_cloudwatch_log_group.backend.name
+    }
+  }
+  source {
+    type            = "GITHUB"
+    location        = "https://github.com/${var.code_pipeline.github_repository_owner}/${var.code_pipeline.github_repository_name}"
+  }
+}
+
+# Define IAM role for CodeBuild
+resource "aws_iam_role" "codebuild" {
+  name               = "${var.common.env}-role-for-codebuild"
+  assume_role_policy = data.aws_iam_policy_document.trust_policy_for_codebuild.json
+}
+
+data "aws_iam_policy_document" "trust_policy_for_codebuild" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["codebuild.amazonaws.com"]
+    }
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_policy" "policy_for_codebuild" {
+  name   = "${var.common.env}-policy-for-codebuild"
+  policy = templatefile("../../iam_policy_json_files/policy_for_codebuild.json", {
+    region = var.common.region,
+    account_id = var.common.account_id,
+    project_name = aws_codebuild_project.backend.name
+    s3_bucket_arn = aws_s3_bucket.codepipeline.arn
+  })
+}
+
+resource "aws_iam_role_policy_attachments_exclusive" "codebuild" {
+  role_name = aws_iam_role.codebuild.name
+  policy_arns = [
+    aws_iam_policy.policy_for_codebuild.arn,
+    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser",
+    "arn:aws:iam::aws:policy/SecretsManagerReadWrite" # 一時的です
+  ]
+}
+
 ########################
 # CodeDeploy
 ########################
@@ -145,6 +421,30 @@ resource "aws_codedeploy_deployment_group" "backend" {
   }
 }
 
+# Define IAM role for CodeDeploy
+resource "aws_iam_role" "codedeploy" {
+  name               = "${var.common.env}-role-for-codedeploy"
+  assume_role_policy = data.aws_iam_policy_document.trust_policy_for_codedeploy.json
+}
+
+data "aws_iam_policy_document" "trust_policy_for_codedeploy" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["codedeploy.amazonaws.com"]
+    }
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_role_policy_attachments_exclusive" "codedeploy" {
+  role_name = aws_iam_role.codedeploy.name
+  policy_arns = [
+    "arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS"
+  ]
+}
+
 ########################
 # Service Discovery
 ########################
@@ -183,187 +483,4 @@ resource "aws_cloudwatch_log_group" "backend" {
   tags = {
     Name = "/ecs/${var.common.env}-backend"
   }
-}
-
-########################
-# IAM Role
-########################
-
-# Define ECS task execution role
-resource "aws_iam_role" "task_execution_role" {
-  name               = "${var.common.env}-task-execution-role"
-  assume_role_policy = data.aws_iam_policy_document.trust_policy_for_task_execution_role.json
-}
-
-# Define trust policy for ECS task execution role
-data "aws_iam_policy_document" "trust_policy_for_task_execution_role" {
-  statement {
-    effect = "Allow"
-    principals {
-      type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
-    }
-    actions = ["sts:AssumeRole"]
-  }
-}
-
-# Define IAM policy for access to Secrets Manager
-resource "aws_iam_policy" "policy_for_access_to_secrets_manager" {
-  name   = "${var.common.env}-GettingSecretsPolicy-backend"
-  policy = data.aws_iam_policy_document.policy_for_access_to_secrets_manager.json
-}
-
-data "aws_iam_policy_document" "policy_for_access_to_secrets_manager" {
-  statement {
-    effect    = "Allow"
-    resources = ["*"]
-    actions = [
-      "secretsmanager:GetSecretValue",
-    ]
-  }
-}
-
-# Associate IAM policies with ECS task execution role
-resource "aws_iam_role_policy_attachments_exclusive" "task_execution_role" {
-  role_name = aws_iam_role.task_execution_role.name
-  policy_arns = [
-    "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
-    aws_iam_policy.policy_for_access_to_secrets_manager.arn
-  ]
-}
-
-# Define IAM role for CodeDeploy
-resource "aws_iam_role" "codedeploy" {
-  name               = "${var.common.env}-role-for-codedeploy"
-  assume_role_policy = data.aws_iam_policy_document.trust_policy_for_codedeploy.json
-}
-
-# Define trust policy for CodeDeploy role
-data "aws_iam_policy_document" "trust_policy_for_codedeploy" {
-  statement {
-    effect = "Allow"
-    principals {
-      type        = "Service"
-      identifiers = ["codedeploy.amazonaws.com"]
-    }
-    actions = ["sts:AssumeRole"]
-  }
-}
-
-# Associate IAM policy with CodeDeploy role
-resource "aws_iam_role_policy_attachments_exclusive" "codedeploy" {
-  role_name = aws_iam_role.codedeploy.name
-  policy_arns = [
-    "arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS"
-  ]
-}
-
-# Define IAM role for Github Actions
-resource "aws_iam_role" "github_actions" {
-  name               = "${var.common.env}-role-for-github-actions"
-  assume_role_policy = data.aws_iam_policy_document.trust_policy_for_github_actions.json
-}
-
-# Define trust policy for Github Actions role
-data "aws_iam_policy_document" "trust_policy_for_github_actions" {
-  statement {
-    effect = "Allow"
-    principals {
-      type        = "Federated"
-      identifiers = ["arn:aws:iam::${var.common.account_id}:oidc-provider/token.actions.githubusercontent.com"]
-    }
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    condition {
-      test     = "StringLike"
-      variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_actions.account_name}/${var.github_actions.repository}:*"]
-    }
-  }
-}
-
-# Define IAM policy for Github Actions
-resource "aws_iam_policy" "policy_for_github_actions" {
-  name   = "${var.common.env}-policy-for-github-actions"
-  policy = data.aws_iam_policy_document.policy_for_github_actions.json
-}
-
-data "aws_iam_policy_document" "policy_for_github_actions" {
-  statement {
-    sid    = "GetAuthorizationToken"
-    effect = "Allow"
-    actions = [
-      "ecr:GetAuthorizationToken"
-    ]
-    resources = ["*"]
-  }
-  statement {
-    sid    = "PushImageOnly"
-    effect = "Allow"
-    actions = [
-      "ecr:BatchCheckLayerAvailability",
-      "ecr:BatchGetImage",
-      "ecr:InitiateLayerUpload",
-      "ecr:UploadLayerPart",
-      "ecr:CompleteLayerUpload",
-      "ecr:PutImage"
-    ]
-    resources = [var.repository]
-  }
-  statement {
-    sid    = "RegisterTaskDefinition"
-    effect = "Allow"
-    actions = [
-      "ecs:RegisterTaskDefinition",
-      "ecs:DescribeTaskDefinition"
-    ]
-    resources = ["*"]
-  }
-  statement {
-    sid    = "UpdateService"
-    effect = "Allow"
-    actions = [
-      "ecs:UpdateServicePrimaryTaskSet",
-      "ecs:DescribeServices",
-      "ecs:UpdateService"
-    ]
-    resources = [aws_ecs_service.backend.id]
-  }
-  statement {
-    sid    = "PassRole"
-    effect = "Allow"
-    actions = [
-      "iam:PassRole"
-    ]
-    resources = [aws_iam_role.task_execution_role.arn]
-    condition {
-      test     = "StringLike"
-      variable = "iam:PassedToService"
-      values   = ["ecs-tasks.amazonaws.com"]
-    }
-  }
-  statement {
-    sid    = "DeployService"
-    effect = "Allow"
-    actions = [
-      "codedeploy:CreateDeployment",
-      "codedeploy:GetDeployment",
-      "codedeploy:GetDeploymentConfig",
-      "codedeploy:GetDeploymentGroup",
-      "codedeploy:RegisterApplicationRevision"
-    ]
-    resources = [
-      aws_codedeploy_app.backend.arn,
-      aws_codedeploy_deployment_group.backend.arn,
-      "arn:aws:codedeploy:${var.common.region}:${var.common.account_id}:deploymentconfig:*"
-    ]
-  }
-}
-
-# Associate IAM policies with Github Actions role
-resource "aws_iam_role_policy_attachments_exclusive" "github_actions" {
-  role_name = aws_iam_role.github_actions.name
-  policy_arns = [
-    "arn:aws:iam::aws:policy/IAMReadOnlyAccess",
-    aws_iam_policy.policy_for_github_actions.arn
-  ]
 }

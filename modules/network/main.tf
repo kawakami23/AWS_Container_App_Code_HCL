@@ -355,53 +355,53 @@ resource "aws_vpc_security_group_egress_rule" "client_vpn" {
   cidr_ipv4         = "0.0.0.0/0"
 }
 
-########################
-# Client VPN
-########################
+# ########################
+# # Client VPN
+# ########################
 
-# Define Client VPN endpoint
-resource "aws_ec2_client_vpn_endpoint" "main" {
-  description = "Client VPN endpoint"
-  client_cidr_block = var.network.client_vpn_cidr
-  server_certificate_arn = data.aws_acm_certificate.vpn_server.arn
-  authentication_options {
-    type = "certificate-authentication"
-    root_certificate_chain_arn = data.aws_acm_certificate.vpn_client.arn
-  }
-  connection_log_options {
-    enabled = false
-  }
-  vpc_id = aws_vpc.main.id
-  dns_servers = [cidrhost(aws_vpc.main.cidr_block, 2)]
-  split_tunnel = true
-  security_group_ids = [aws_security_group.client_vpn.id]
-  tags = {
-    Name = "${var.common.env}-client-vpn-endpoint"
-  }
-}
+# # Define Client VPN endpoint
+# resource "aws_ec2_client_vpn_endpoint" "main" {
+#   description = "Client VPN endpoint"
+#   client_cidr_block = var.network.client_vpn_cidr
+#   server_certificate_arn = data.aws_acm_certificate.vpn_server.arn
+#   authentication_options {
+#     type = "certificate-authentication"
+#     root_certificate_chain_arn = data.aws_acm_certificate.vpn_client.arn
+#   }
+#   connection_log_options {
+#     enabled = false
+#   }
+#   vpc_id = aws_vpc.main.id
+#   dns_servers = [cidrhost(aws_vpc.main.cidr_block, 2)]
+#   split_tunnel = true
+#   security_group_ids = [aws_security_group.client_vpn.id]
+#   tags = {
+#     Name = "${var.common.env}-client-vpn-endpoint"
+#   }
+# }
 
-# Refer to certificates pre-issued on ACM
-data "aws_acm_certificate" "vpn_server" {
-  domain = "server"
-}
+# # Refer to certificates pre-issued on ACM
+# data "aws_acm_certificate" "vpn_server" {
+#   domain = "server"
+# }
 
-data "aws_acm_certificate" "vpn_client" {
-  domain = "client1.domain.tld"
-}
+# data "aws_acm_certificate" "vpn_client" {
+#   domain = "client1.domain.tld"
+# }
 
-# Associate Client VPN endpoint with target network
-resource "aws_ec2_client_vpn_network_association" "main" {
-  for_each = aws_subnet.private_vpn
-  client_vpn_endpoint_id = aws_ec2_client_vpn_endpoint.main.id
-  subnet_id = each.value.id
-}
+# # Associate Client VPN endpoint with target network
+# resource "aws_ec2_client_vpn_network_association" "main" {
+#   for_each = aws_subnet.private_vpn
+#   client_vpn_endpoint_id = aws_ec2_client_vpn_endpoint.main.id
+#   subnet_id = each.value.id
+# }
 
-# Define authorization rule for Client VPN
-resource "aws_ec2_client_vpn_authorization_rule" "main" {
-  client_vpn_endpoint_id = aws_ec2_client_vpn_endpoint.main.id
-  target_network_cidr = aws_vpc.main.cidr_block
-  authorize_all_groups = true
-}
+# # Define authorization rule for Client VPN
+# resource "aws_ec2_client_vpn_authorization_rule" "main" {
+#   client_vpn_endpoint_id = aws_ec2_client_vpn_endpoint.main.id
+#   target_network_cidr = aws_vpc.main.cidr_block
+#   authorize_all_groups = true
+# }
 
 ########################
 # Route53 Public Hosted Zone

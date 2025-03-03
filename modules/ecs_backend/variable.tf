@@ -6,13 +6,6 @@ variable "common" {
   })
 }
 
-variable "github_actions" {
-  type = object({
-    account_name = string
-    repository   = string
-  })
-}
-
 variable "network" {
   type = object({
     vpc_id                                  = string
@@ -38,6 +31,20 @@ variable "secrets_manager" {
   })
 }
 
-variable "repository" {
-  type = string
+variable "ecr_repository" {
+  type = object({
+    backend_repository_uri = string
+  })
+}
+
+variable "code_pipeline" {
+  type = object({
+    code_connection_arn = string
+    artifacts_bucket_name = string
+    github_repository_owner = string
+    github_repository_name = string
+    github_repository_branch_name = string
+    docker_username = string
+    docker_password = string
+  })
 }

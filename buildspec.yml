@@ -7,6 +7,8 @@ phases:
     commands:
       - echo "ECRへログイン"
       - aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
+      - echo "DockerHubにログイン"
+      - docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}
   build:
     commands:
       - echo "ビルド開始"
@@ -16,3 +18,13 @@ phases:
       - echo "ECRへpush"
       - docker push "${REPOSITORY_URI}:test"
       - printf '{"Version":"1.0","ImageURI":"%s"}' ${REPOSITORY_URI}:test > imageDetail.json
+      - echo "タスク定義を書き換える"
+      - pwd
+      - sed -ie "s/<TASK_FAMILY>/${TASK_FAMILY}/" taskdef.json
+      - sed -ie "s/<TASK_EXECUTION_ROLE_ARN>/${TASK_EXECUTION_ROLE_ARN}/" taskdef.json
+      - sed -ie "s/<SECRETS_FOR_DB_ARN>/${SECRETS_FOR_DB_ARN}/" taskdef.json
+      - sed -ie "s/<LOG_GROUP_NAME>/${LOG_GROUP_NAME}/" taskdef.json
+      - echo "$(cat taskdef.json)"
+artifacts:
+  files:
+    - imageDetail.json

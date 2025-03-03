@@ -1,0 +1,51 @@
+{
+  "family": "<TASK_FAMILY>",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": 512,
+  "memory": 1024,
+  "networkMode": "awsvpc",
+  "executionRoleArn": "<TASK_EXECUTION_ROLE_ARN>",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "<IMAGE1_NAME>",
+      "cpu": 256,
+      "memory": 512,
+      "essential": true,
+      "secrets": [
+        {
+          "name": "DB_HOST",
+          "valueFrom": "<SECRETS_FOR_DB_ARN>:host::"
+        },
+        {
+          "name": "DB_NAME",
+          "valueFrom": "<SECRETS_FOR_DB_ARN>:dbname::"
+        },
+        {
+          "name": "DB_USERNAME",
+          "valueFrom": "<SECRETS_FOR_DB_ARN>:username::"
+        },
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": "<SECRETS_FOR_DB_ARN>:password::"
+        }
+      ],
+      "portMappings": [
+        {
+          "containerPort": 80
+        }
+      ],
+      "readonlyRootFilesystem": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-region": "<REGION>",
+          "awslogs-group": "<LOG_GROUP_NAME>",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

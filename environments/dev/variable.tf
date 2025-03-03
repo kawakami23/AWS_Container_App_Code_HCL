@@ -14,15 +14,14 @@ variable "public_hosted_zone" {
   })
 }
 
-variable "github_actions" {
+variable "code_pipeline" {
   type = object({
-    account_name = string
-    repository   = string
-  }) 
-}
-
-variable "code_connection" {
-  type = object({
-    arn = string
+    code_connection_arn = string
+    artifacts_bucket_name = string
+    github_repository_owner = string
+    github_repository_name = string
+    github_repository_branch_name = string
+    docker_username = string
+    docker_password = string
   })
 }

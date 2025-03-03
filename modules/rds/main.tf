@@ -30,7 +30,7 @@ resource "aws_db_instance" "main" {
   engine                    = "mysql"
   engine_version            = "5.7"
   instance_class            = "db.t3.small"
-  multi_az                  = true
+  multi_az                  = false
   db_name                   = var.db_info.name
   username                  = var.db_info.db_master_user_name
   password                  = var.db_info.db_master_user_password
