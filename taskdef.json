@@ -1,8 +1,6 @@
 {
   "family": "<TASK_FAMILY>",
-  "requiresCompatibilities": [
-    "FARGATE"
-  ],
+  "requiresCompatibilities": ["FARGATE"],
   "cpu": 512,
   "memory": 1024,
   "networkMode": "awsvpc",
@@ -32,11 +30,7 @@
           "valueFrom": "<SECRETS_FOR_DB_ARN>:password::"
         }
       ],
-      "portMappings": [
-        {
-          "containerPort": 80
-        }
-      ],
+      "portMappings": [{"containerPort": 80}],
       "readonlyRootFilesystem": true,
       "logConfiguration": {
         "logDriver": "awslogs",
