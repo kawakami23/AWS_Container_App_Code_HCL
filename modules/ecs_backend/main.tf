@@ -148,9 +148,9 @@ data "aws_codestarconnections_connection" "github" {
 
 # Define CodePipeline
 resource "aws_codepipeline" "backend" {
-  name     = "${var.common.env}-backend-codepipeline"
-  role_arn = aws_iam_role.codepipeline.arn
-  pipeline_type = "V2"
+  name           = "${var.common.env}-backend-codepipeline"
+  role_arn       = aws_iam_role.codepipeline.arn
+  pipeline_type  = "V2"
   execution_mode = "QUEUED"
 
   artifact_store {
@@ -169,9 +169,9 @@ resource "aws_codepipeline" "backend" {
       output_artifacts = ["SourceArtifact"]
 
       configuration = {
-        ConnectionArn = data.aws_codestarconnections_connection.github.arn
+        ConnectionArn    = data.aws_codestarconnections_connection.github.arn
         FullRepositoryId = "${var.code_pipeline.github_repository_owner}/${var.code_pipeline.github_repository_name}"
-        BranchName = var.code_pipeline.github_repository_branch_name
+        BranchName       = var.code_pipeline.github_repository_branch_name
       }
     }
   }
@@ -180,12 +180,12 @@ resource "aws_codepipeline" "backend" {
     name = "Build"
 
     action {
-      name            = "${var.common.env}-backend-build"
-      category        = "Build"
-      owner           = "AWS"
-      provider        = "CodeBuild"
-      version         = "1"
-      input_artifacts = ["SourceArtifact"]
+      name             = "${var.common.env}-backend-build"
+      category         = "Build"
+      owner            = "AWS"
+      provider         = "CodeBuild"
+      version          = "1"
+      input_artifacts  = ["SourceArtifact"]
       output_artifacts = ["BuildArtifact"]
 
       configuration = {
@@ -206,10 +206,12 @@ resource "aws_codepipeline" "backend" {
       input_artifacts = ["SourceArtifact", "BuildArtifact"]
 
       configuration = {
-        ApplicationName         = aws_codedeploy_app.backend.name
-        DeploymentGroupName     = aws_codedeploy_deployment_group.backend.deployment_group_name
+        ApplicationName                = aws_codedeploy_app.backend.name
+        DeploymentGroupName            = aws_codedeploy_deployment_group.backend.deployment_group_name
         TaskDefinitionTemplateArtifact = "SourceArtifact"
-        AppSpecTemplateArtifact = "SourceArtifact"
+        AppSpecTemplateArtifact        = "SourceArtifact"
+        Image1ArtifactName             = "BuildArtifact"
+        Image1ContainerName            = "IMAGE1_NAME"
       }
     }
   }
@@ -233,7 +235,7 @@ data "aws_iam_policy_document" "trust_policy_for_codepipeline" {
 }
 
 resource "aws_iam_policy" "policy_for_codepipeline" {
-  name   = "${var.common.env}-policy-for-codepipeline"
+  name = "${var.common.env}-policy-for-codepipeline"
   policy = templatefile("../../iam_policy_json_files/policy_for_codepipeline.json", {
     pipeline_arn = aws_codepipeline.backend.arn
   })
@@ -259,7 +261,7 @@ resource "aws_s3_bucket_versioning" "codepipeline" {
 }
 
 resource "aws_s3_bucket_public_access_block" "codepipeline" {
-  bucket = aws_s3_bucket.codepipeline.bucket
+  bucket                  = aws_s3_bucket.codepipeline.bucket
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
@@ -328,8 +330,8 @@ resource "aws_codebuild_project" "backend" {
     }
   }
   source {
-    type            = "GITHUB"
-    location        = "https://github.com/${var.code_pipeline.github_repository_owner}/${var.code_pipeline.github_repository_name}"
+    type     = "GITHUB"
+    location = "https://github.com/${var.code_pipeline.github_repository_owner}/${var.code_pipeline.github_repository_name}"
   }
 }
 
@@ -351,11 +353,11 @@ data "aws_iam_policy_document" "trust_policy_for_codebuild" {
 }
 
 resource "aws_iam_policy" "policy_for_codebuild" {
-  name   = "${var.common.env}-policy-for-codebuild"
+  name = "${var.common.env}-policy-for-codebuild"
   policy = templatefile("../../iam_policy_json_files/policy_for_codebuild.json", {
-    region = var.common.region,
-    account_id = var.common.account_id,
-    project_name = aws_codebuild_project.backend.name
+    region        = var.common.region,
+    account_id    = var.common.account_id,
+    project_name  = aws_codebuild_project.backend.name
     s3_bucket_arn = aws_s3_bucket.codepipeline.arn
   })
 }
