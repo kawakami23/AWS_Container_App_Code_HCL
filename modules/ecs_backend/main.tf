@@ -203,13 +203,13 @@ resource "aws_codepipeline" "backend" {
       owner           = "AWS"
       provider        = "CodeDeployToECS"
       version         = "1"
-      input_artifacts = ["SourceArtifact", "BuildArtifact"]
+      input_artifacts = ["BuildArtifact"]
 
       configuration = {
         ApplicationName                = aws_codedeploy_app.backend.name
         DeploymentGroupName            = aws_codedeploy_deployment_group.backend.deployment_group_name
-        TaskDefinitionTemplateArtifact = "SourceArtifact"
-        AppSpecTemplateArtifact        = "SourceArtifact"
+        TaskDefinitionTemplateArtifact = "BuildArtifact"
+        AppSpecTemplateArtifact        = "BuildArtifact"
         Image1ArtifactName             = "BuildArtifact"
         Image1ContainerName            = "IMAGE1_NAME"
       }
